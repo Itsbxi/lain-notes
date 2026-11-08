@@ -27,18 +27,18 @@ data class Cfg(
     val theme: Int = 0,
     val mode: Int = 0,          // 0 = TV wall, 1 = full ASCII, 2 = off
     val custom: Boolean = false,
-    val cols: Int = 140,
+    val cols: Int = 150,
     val ramp: Int = 0,
-    val contrast: Float = 1.2f,
+    val contrast: Float = 1.3f,
     val brightness: Float = 0f,
-    val gamma: Float = 1f,
-    val edge: Float = 0.45f,
+    val gamma: Float = 1.7f,
+    val edge: Float = 0.6f,
     val dither: Float = 0f,
     val zoom: Float = 1f,
     val panX: Float = 0.5f,
-    val panY: Float = 0.3f,
+    val panY: Float = 0.5f,
     val invert: Boolean = false,
-    val fit: Boolean = false,
+    val fit: Boolean = true,
     val dim: Float = 0.45f,
     val scan: Boolean = true,
     val anim: Boolean = true,
@@ -57,10 +57,27 @@ data class Cfg(
         copy(theme = i, cables = (i == 1), code = (i == 2), hatch = (i == 3))
 }
 
+private const val CFG_VER = 3
+
 class CfgStore(ctx: Context) {
     private val sp = ctx.getSharedPreferences("lain_cfg", Context.MODE_PRIVATE)
 
+    /** Loads settings; older saves get the new tuned picture defaults once. */
     fun load(): Cfg {
+        val c = read()
+        if (sp.getInt("ver", 0) >= CFG_VER) return c
+        val d = Cfg()
+        val m = c.copy(
+            custom = false,
+            cols = d.cols, ramp = d.ramp, contrast = d.contrast, brightness = d.brightness,
+            gamma = d.gamma, edge = d.edge, dither = d.dither, zoom = d.zoom,
+            panX = d.panX, panY = d.panY, invert = d.invert, fit = d.fit,
+        )
+        save(m)
+        return m
+    }
+
+    private fun read(): Cfg {
         val d = Cfg()
         return Cfg(
             theme = sp.getInt("theme", d.theme).coerceIn(0, PALS.size - 1),
@@ -91,6 +108,7 @@ class CfgStore(ctx: Context) {
 
     fun save(c: Cfg) {
         sp.edit()
+            .putInt("ver", CFG_VER)
             .putInt("theme", c.theme)
             .putInt("mode", c.mode)
             .putBoolean("custom", c.custom)

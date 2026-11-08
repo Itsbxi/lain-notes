@@ -161,6 +161,17 @@ class Live {
     @Volatile
     var picW: Int = 720
 
+    /** Exact bitmap height in pixels (0 = derive it from the grid). */
+    @Volatile
+    var picH: Int = 0
+
+    /** Size of the settings preview in pixels (0 = no preview wanted). */
+    @Volatile
+    var prevW: Int = 0
+
+    @Volatile
+    var prevH: Int = 0
+
     @Volatile
     var fps: Int = 10
 
@@ -176,7 +187,7 @@ class Live {
     /** Bumped after every rendered frame so draw scopes know to repaint. */
     var ver: Int by mutableStateOf(0)
 
-    private val chans: Array<Chan?> = arrayOfNulls<Chan>(4)
+    private val chans: Array<Chan?> = arrayOfNulls<Chan>(5)
     private var seenVer = -1
     private var wasCasting = false
 
@@ -202,7 +213,7 @@ class Live {
         val cols = first[0].length
         val rows = first.size
         val w = picW
-        val h = Engine.heightFor(cols, rows, w)
+        val h = if (picH > 0) picH else Engine.heightFor(cols, rows, w)
         val existing = chans[0]
         if (existing == null || existing.wPx != w || existing.hPx != h) seenVer = -1
         val chan = chanFor(0, w, h)
@@ -218,6 +229,20 @@ class Live {
         var lines = frames[idx.coerceIn(0, frames.size - 1)]
         if (casting) lines = Engine.cast(lines, (now - castFrom).toFloat() / CAST_MS, 7, t)
         chan.draw(lines, paint)
+        return true
+    }
+
+    /** Draws the text straight at preview size, so the preview is smooth instead of a shrunk bitmap. */
+    private fun renderPrev(paint: Paint): Boolean {
+        val w = prevW
+        val h = prevH
+        if (w < 16 || h < 16) return false
+        val frames = pic
+        if (frames.isEmpty()) return false
+        val now = SystemClock.uptimeMillis()
+        var idx = 0
+        if (on && frames.size > 1) idx = ((now / (1000L / max(1, fps))) % frames.size).toInt()
+        chanFor(4, w, h).draw(frames[idx.coerceIn(0, frames.size - 1)], paint)
         return true
     }
 
@@ -239,6 +264,7 @@ class Live {
             var drew = false
             try {
                 if (renderPic(paint, t)) drew = true
+                if (renderPrev(paint)) drew = true
                 if (mix) {
                     // when animation is off, each generator still draws one frame so the screens are not blank
                     if (on || chans[1] == null) {

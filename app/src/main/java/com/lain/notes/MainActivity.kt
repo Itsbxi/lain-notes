@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -126,15 +127,19 @@ fun App() {
     var castedVer by remember { mutableStateOf(-1) }
     var converted by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf("") }
+    var canvasW by remember { mutableStateOf(0) }
+    var canvasH by remember { mutableStateOf(0) }
 
     val live = remember { Live() }
     val noise = remember { Engine.noise(128).asImageBitmap() }
     val pal = PALS[cfg.theme.coerceIn(0, PALS.size - 1)]
 
     val conf = LocalConfiguration.current
-    val screenAspect = conf.screenWidthDp.toFloat() / maxOf(1, conf.screenHeightDp).toFloat()
     val density = LocalDensity.current.density
-    val screenWpx = (conf.screenWidthDp * density).toInt()
+    // the real pixel size of the drawing area (falls back to the dp size until measured)
+    val usedW = if (canvasW > 0) canvasW else (conf.screenWidthDp * density).toInt()
+    val usedH = if (canvasH > 0) canvasH else (conf.screenHeightDp * density).toInt()
+    val screenAspect = usedW.toFloat() / maxOf(1, usedH).toFloat()
 
     // ---- animation plumbing ------------------------------------------------
     val animNeeded = screen == 0 || (cfg.anim && screen != 2)
@@ -175,7 +180,7 @@ fun App() {
     }
 
     // ---- image -> ascii (debounced while sliders move) -----------------------
-    LaunchedEffect(cfg.asciiKey(), clip, screenAspect, srcVer) {
+    LaunchedEffect(cfg.asciiKey(), clip, usedW, usedH, srcVer) {
         val cl = clip
         if (cl != null) {
             if (converted) delay(140)
@@ -183,14 +188,15 @@ fun App() {
             val aspect = if (c.mode == 1) screenAspect else 1.0f
             val res: List<List<String>>? = withContext(Dispatchers.Default) {
                 try {
-                    Engine.toLinesAll(cl, c, aspect)
+                    Engine.toLinesAll(cl, if (c.mode == 1) c else c.copy(fit = false), aspect)
                 } catch (e: Throwable) {
                     null
                 }
             }
             if (res != null && res.isNotEmpty()) {
                 live.fps = cl.fps
-                live.picW = if (c.mode == 1) screenWpx.coerceIn(360, 1200) else 720
+                live.picW = if (c.mode == 1) usedW.coerceIn(360, 1500) else 560
+                live.picH = if (c.mode == 1) usedH.coerceIn(360, 4000) else 0
                 live.pic = res
                 live.picVer = live.picVer + 1
                 if (castedVer != srcVer) {
@@ -265,6 +271,13 @@ fun App() {
             Modifier
                 .fillMaxSize()
                 .background(pal.bg)
+                .onSizeChanged { sz ->
+                    // ignore the keyboard shrinking the window while a note is open
+                    if (screen != 2) {
+                        canvasW = sz.width
+                        canvasH = sz.height
+                    }
+                }
         ) {
             if (screen == 0) {
                 BootScreen(cfg, pal, live, noise, tick) { screen = 1 }
@@ -325,6 +338,7 @@ fun App() {
                         live = live,
                         noise = noise,
                         tick = tick,
+                        aspect = screenAspect,
                         busy = busy,
                         onCfg = setCfg,
                         onLoadImage = { pickImage.launch("image/*") },

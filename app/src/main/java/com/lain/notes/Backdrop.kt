@@ -328,6 +328,24 @@ private fun DrawScope.drawFull(pal: Pal, cfg: Cfg, live: Live, t: Int) {
     }
 }
 
+/** Smooth settings preview of the full-screen ASCII picture (drawn 1:1, never shrunk). */
+@Composable
+fun AsciiPreview(pal: Pal, live: Live, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        drawRect(pal.bg)
+        @Suppress("UNUSED_VARIABLE")
+        val frameVersion = live.ver
+        val img = live.image(4)
+        if (img != null) {
+            drawImage(
+                image = img,
+                dstSize = IntSize(max(1, size.width.toInt()), max(1, size.height.toInt())),
+                colorFilter = ColorFilter.tint(pal.tint),
+            )
+        }
+    }
+}
+
 /** Layer under the UI: hatch lines, tangled cables and the code overlay. */
 @Composable
 fun UnderLayer(cfg: Cfg, pal: Pal) {
@@ -380,7 +398,7 @@ fun UnderLayer(cfg: Cfg, pal: Pal) {
 @Composable
 fun TopLayer(cfg: Cfg, pal: Pal, tick: () -> Int, active: Boolean) {
     Canvas(Modifier.fillMaxSize()) {
-        if (cfg.scan) {
+        if (cfg.scan && cfg.mode != 1) {
             val step = 3.5f * density
             var y = 0f
             while (y < size.height) {

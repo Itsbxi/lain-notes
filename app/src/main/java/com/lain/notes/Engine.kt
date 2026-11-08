@@ -304,6 +304,54 @@ object Engine {
         return out
     }
 
+    /**
+     * In "fit" mode the picture does not cover the whole screen. Instead of black bars the
+     * empty cells get a soft, dim, blurred copy of the same picture, so the layout fills the phone.
+     */
+    private fun fillBars(p: Plane, cfg: Cfg, g: FloatArray, cols: Int, rows: Int, ta: Float) {
+        val w = p.w
+        val h = p.h
+        val imgAspect = w.toFloat() / h.toFloat()
+        val wide = imgAspect > ta
+        val containW = if (wide) w.toFloat() else h * ta
+        val containH = if (wide) w / ta else h.toFloat()
+        val zoom = cfg.zoom.coerceIn(1f, 4f)
+        val rw = containW / zoom
+        val rh = containH / zoom
+        val left = (w - rw) * cfg.panX.coerceIn(0f, 1f)
+        val top = (h - rh) * cfg.panY.coerceIn(0f, 1f)
+        val cw = rw / cols
+        val chh = rh / rows
+        val sc = 4
+        val gc = cols / sc + 2
+        val gr = rows / sc + 2
+        val coarse = sampleGrid(p, cfg.copy(fit = false, zoom = 1f), gc, gr, ta)
+        var cmax = 0.05f
+        for (cv in coarse) {
+            if (cv > cmax) cmax = cv
+        }
+        val gain = 0.8f / cmax
+        for (cy in 0 until rows) {
+            val sy = top + (cy + 0.5f) * chh
+            val yIn = sy >= 0f && sy < h
+            for (cx in 0 until cols) {
+                val sx = left + (cx + 0.5f) * cw
+                if (yIn && sx >= 0f && sx < w) continue
+                val fx = cx.toFloat() * gc / cols
+                val fy = cy.toFloat() * gr / rows
+                val x0 = min(fx.toInt(), gc - 1)
+                val y0 = min(fy.toInt(), gr - 1)
+                val x1 = min(x0 + 1, gc - 1)
+                val y1 = min(y0 + 1, gr - 1)
+                val tx = fx - x0
+                val ty = fy - y0
+                val upper = coarse[y0 * gc + x0] * (1f - tx) + coarse[y0 * gc + x1] * tx
+                val lower = coarse[y1 * gc + x0] * (1f - tx) + coarse[y1 * gc + x1] * tx
+                g[cy * cols + cx] = (upper * (1f - ty) + lower * ty) * gain
+            }
+        }
+    }
+
     private fun percentiles(v: FloatArray): FloatArray {
         val s = v.copyOf()
         s.sort()
@@ -381,6 +429,7 @@ object Engine {
         var hi = 0f
         for (p in clip.frames) {
             val g = sampleGrid(p, cfg, cols, rows, ta)
+            if (cfg.fit) fillBars(p, cfg, g, cols, rows, ta)
             grids.add(g)
             val pr = percentiles(g)
             lo += pr[0]

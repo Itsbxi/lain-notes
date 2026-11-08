@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,7 +35,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -393,6 +394,7 @@ fun SettingsScreen(
     live: Live,
     noise: ImageBitmap?,
     tick: () -> Int,
+    aspect: Float,
     busy: String,
     onCfg: (Cfg) -> Unit,
     onLoadImage: () -> Unit,
@@ -402,8 +404,12 @@ fun SettingsScreen(
     onBack: () -> Unit,
 ) {
     BackHandler { onBack() }
-    val conf = LocalConfiguration.current
-    val aspect = conf.screenWidthDp.toFloat() / maxOf(1, conf.screenHeightDp).toFloat()
+    DisposableEffect(Unit) {
+        onDispose {
+            live.prevW = 0
+            live.prevH = 0
+        }
+    }
 
     Column(
         Modifier
@@ -422,19 +428,27 @@ fun SettingsScreen(
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Box(
                 Modifier
-                    .fillMaxWidth(0.55f)
+                    .fillMaxWidth(0.5f)
                     .aspectRatio(aspect)
                     .border(1.dp, pal.accent)
+                    .onSizeChanged { sz ->
+                        live.prevW = sz.width
+                        live.prevH = sz.height
+                    }
             ) {
-                Backdrop(
-                    cfg = cfg,
-                    pal = pal,
-                    live = live,
-                    noise = noise,
-                    tick = tick,
-                    active = cfg.anim,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                if (cfg.mode == 1) {
+                    AsciiPreview(pal, live, Modifier.fillMaxSize())
+                } else {
+                    Backdrop(
+                        cfg = cfg,
+                        pal = pal,
+                        live = live,
+                        noise = noise,
+                        tick = tick,
+                        active = cfg.anim,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -463,7 +477,10 @@ fun SettingsScreen(
         ChipRow(PALS.map { it.name }, cfg.theme, pal) { onCfg(cfg.withTheme(it)) }
 
         SectionTitle("SCREEN", pal)
-        ChipRow(listOf("TV WALL", "ASCII", "OFF"), cfg.mode, pal) { onCfg(cfg.copy(mode = it)) }
+        ChipRow(listOf("TV WALL", "ASCII", "OFF"), cfg.mode, pal) {
+            onCfg(cfg.copy(mode = it, cols = if (it == 1) maxOf(cfg.cols, 180) else cfg.cols))
+        }
+        Text("ascii: more detail = sharper face (180-220)", style = mono(10, pal.dim))
         ToggleRow("MIXED CHANNELS (rain / fire / plasma)", cfg.mix, pal) { onCfg(cfg.copy(mix = it)) }
 
         SectionTitle("IMAGE -> ASCII", pal)
@@ -479,7 +496,7 @@ fun SettingsScreen(
         SliderRow("PAN X", cfg.panX, 0f..1f, pal, { f2(it) }) { onCfg(cfg.copy(panX = it)) }
         SliderRow("PAN Y", cfg.panY, 0f..1f, pal, { f2(it) }) { onCfg(cfg.copy(panY = it)) }
         ToggleRow("INVERT", cfg.invert, pal) { onCfg(cfg.copy(invert = it)) }
-        ToggleRow("FIT WHOLE IMAGE", cfg.fit, pal) { onCfg(cfg.copy(fit = it)) }
+        ToggleRow("FIT WHOLE IMAGE (+ glow fill)", cfg.fit, pal) { onCfg(cfg.copy(fit = it)) }
         Spacer(Modifier.height(6.dp))
         Text("CHARSET", style = mono(12, pal.dim))
         Spacer(Modifier.height(4.dp))
@@ -495,7 +512,7 @@ fun SettingsScreen(
         ToggleRow("HATCH LINES", cfg.hatch, pal) { onCfg(cfg.copy(hatch = it)) }
 
         Spacer(Modifier.height(18.dp))
-        Text("LAIN://NOTES v2.0  glyphcast edition", style = mono(10, pal.dim))
+        Text("LAIN://NOTES v2.2  glyphcast edition", style = mono(10, pal.dim))
         Spacer(Modifier.height(24.dp))
     }
 }

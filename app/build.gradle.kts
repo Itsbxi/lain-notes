@@ -15,9 +15,9 @@ android {
         versionName = "2.3"
     }
 
-    // A fixed debug key: every build is signed the same way, so updates install over the old app.
-    signingConfigs {
-        getByName("debug") {
+    // Use a local fixed key when available; CI falls back to Android's generated debug key.
+    if (file("debug.keystore").isFile) {
+        signingConfigs.getByName("debug").apply {
             storeFile = file("debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"

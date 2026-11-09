@@ -395,12 +395,16 @@ fun SettingsScreen(
     noise: ImageBitmap?,
     tick: () -> Int,
     aspect: Float,
+    areaW: Int,
+    areaH: Int,
     busy: String,
     onCfg: (Cfg) -> Unit,
     onLoadImage: () -> Unit,
     onLoadVideo: () -> Unit,
     onDefault: () -> Unit,
     onRecast: () -> Unit,
+    onAutoFit: () -> Unit,
+    onResetAll: () -> Unit,
     onBack: () -> Unit,
 ) {
     BackHandler { onBack() }
@@ -437,7 +441,7 @@ fun SettingsScreen(
                     }
             ) {
                 if (cfg.mode == 1) {
-                    AsciiPreview(pal, live, Modifier.fillMaxSize())
+                    AsciiPreview(cfg, pal, live, Modifier.fillMaxSize())
                 } else {
                     Backdrop(
                         cfg = cfg,
@@ -473,6 +477,19 @@ fun SettingsScreen(
         Spacer(Modifier.height(4.dp))
         Text("gif / video: the first 9 seconds are cast at 10 fps", style = mono(10, pal.dim))
 
+        SectionTitle("FIT TO SCREEN", pal)
+        TermButton("AUTO FIT  (screen + picture + letters)", pal.accent, onAutoFit, Modifier.fillMaxWidth())
+        Spacer(Modifier.height(8.dp))
+        TermButton("RESET TO DEFAULT SETTINGS", pal.dim, onResetAll, Modifier.fillMaxWidth())
+        Spacer(Modifier.height(4.dp))
+        Text("drawing area: $areaW x $areaH px", style = mono(10, pal.dim))
+        SliderRow("WIDTH %", cfg.sx * 100f, 60f..140f, pal, { it.toInt().toString() }) { onCfg(cfg.copy(sx = it / 100f)) }
+        SliderRow("HEIGHT %", cfg.sy * 100f, 60f..140f, pal, { it.toInt().toString() }) { onCfg(cfg.copy(sy = it / 100f)) }
+        SliderRow("SHIFT LEFT / RIGHT", cfg.ox, -0.3f..0.3f, pal, { f2(it) }) { onCfg(cfg.copy(ox = it)) }
+        SliderRow("SHIFT UP / DOWN", cfg.oy, -0.3f..0.3f, pal, { f2(it) }) { onCfg(cfg.copy(oy = it)) }
+        SliderRow("LINE SPACING", cfg.cell, 1.5f..2.6f, pal, { f2(it) }) { onCfg(cfg.copy(cell = it)) }
+        Text("width / height / shift move the whole ASCII screen mode picture", style = mono(10, pal.dim))
+
         SectionTitle("THEME", pal)
         ChipRow(PALS.map { it.name }, cfg.theme, pal) { onCfg(cfg.withTheme(it)) }
 
@@ -492,7 +509,7 @@ fun SettingsScreen(
         SliderRow("GAMMA", cfg.gamma, 0.5f..2.2f, pal, { f2(it) }) { onCfg(cfg.copy(gamma = it)) }
         SliderRow("EDGE", cfg.edge, 0f..1f, pal, { f2(it) }) { onCfg(cfg.copy(edge = it)) }
         SliderRow("DITHER", cfg.dither, 0f..1f, pal, { f2(it) }) { onCfg(cfg.copy(dither = it)) }
-        SliderRow("ZOOM", cfg.zoom, 1f..3f, pal, { f2(it) }) { onCfg(cfg.copy(zoom = it)) }
+        SliderRow("ZOOM", cfg.zoom, 1f..4f, pal, { f2(it) }) { onCfg(cfg.copy(zoom = it)) }
         SliderRow("PAN X", cfg.panX, 0f..1f, pal, { f2(it) }) { onCfg(cfg.copy(panX = it)) }
         SliderRow("PAN Y", cfg.panY, 0f..1f, pal, { f2(it) }) { onCfg(cfg.copy(panY = it)) }
         ToggleRow("INVERT", cfg.invert, pal) { onCfg(cfg.copy(invert = it)) }
@@ -512,7 +529,7 @@ fun SettingsScreen(
         ToggleRow("HATCH LINES", cfg.hatch, pal) { onCfg(cfg.copy(hatch = it)) }
 
         Spacer(Modifier.height(18.dp))
-        Text("LAIN://NOTES v2.2  glyphcast edition", style = mono(10, pal.dim))
+        Text("LAIN://NOTES v2.3  glyphcast edition", style = mono(10, pal.dim))
         Spacer(Modifier.height(24.dp))
     }
 }

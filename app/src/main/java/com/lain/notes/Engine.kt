@@ -13,6 +13,7 @@ import android.media.ExifInterface
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import androidx.core.content.res.ResourcesCompat
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.DataInputStream
@@ -41,6 +42,20 @@ object Engine {
     const val MAX_FRAMES = 90
 
     private val BAYER = intArrayOf(0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5)
+
+    /** Why the last picture / gif / video failed to load (shown in the settings). */
+    @Volatile
+    var lastError: String = ""
+
+    private fun describe(e: Throwable): String = e.javaClass.simpleName + ": " + (e.message ?: "")
+
+    fun loadMono(ctx: Context): Typeface? {
+        return try {
+            ResourcesCompat.getFont(ctx, R.font.dejavu_sans_mono)
+        } catch (e: Throwable) {
+            null
+        }
+    }
 
     // ------------------------------------------------------------------ decoding
 
@@ -77,7 +92,10 @@ object Engine {
             val bounds = BitmapFactory.Options()
             bounds.inJustDecodeBounds = true
             cr.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                lastError = "not a readable picture"
+                return null
+            }
             var sample = 1
             while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxSide) sample *= 2
             val opts = BitmapFactory.Options()
@@ -105,6 +123,7 @@ object Engine {
             }
             return planeOf(fit(bmp, maxSide))
         } catch (e: Throwable) {
+            lastError = describe(e)
             return null
         }
     }
@@ -127,7 +146,11 @@ object Engine {
     fun decodeGif(ctx: Context, uri: Uri): Clip? {
         try {
             val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return null
-            val mv = Movie.decodeByteArray(bytes, 0, bytes.size) ?: return null
+            val mv = Movie.decodeByteArray(bytes, 0, bytes.size)
+            if (mv == null) {
+                lastError = "this gif can't be decoded"
+                return null
+            }
             val mw = mv.width()
             val mh = mv.height()
             if (mw <= 0 || mh <= 0) return null
@@ -150,6 +173,7 @@ object Engine {
             }
             return Clip(frames, if (n > 1) 10 else 1)
         } catch (e: Throwable) {
+            lastError = describe(e)
             return null
         }
     }
@@ -157,8 +181,16 @@ object Engine {
     /** Video -> frames at 10 fps (first 9 seconds). */
     fun decodeVideo(ctx: Context, uri: Uri, onProgress: (Int, Int) -> Unit): Clip? {
         val r = MediaMetadataRetriever()
+        val f = File(ctx.cacheDir, "clip_src.tmp")
         try {
-            r.setDataSource(ctx, uri)
+            // copying first is more reliable than reading a content:// uri directly
+            val input = ctx.contentResolver.openInputStream(uri)
+            if (input == null) {
+                lastError = "cannot open the video"
+                return null
+            }
+            input.use { s -> FileOutputStream(f).use { o -> s.copyTo(o) } }
+            r.setDataSource(f.absolutePath)
             val durMs = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
             var vw = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
             var vh = r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
@@ -168,7 +200,10 @@ object Engine {
                 vw = vh
                 vh = tmp
             }
-            if (durMs <= 0L || vw <= 0 || vh <= 0) return null
+            if (durMs <= 0L || vw <= 0 || vh <= 0) {
+                lastError = "no video track found (duration $durMs, size ${vw}x$vh)"
+                return null
+            }
             val n = min(MAX_FRAMES, max(1, (durMs / 100L).toInt()))
             val scale = min(1f, 320f / max(vw, vh))
             val tw = max(1, (vw * scale).roundToInt())
@@ -176,24 +211,35 @@ object Engine {
             val frames = ArrayList<Plane>()
             for (i in 0 until n) {
                 val tUs = i * 100000L
-                var bmp: Bitmap? = if (Build.VERSION.SDK_INT >= 27) {
-                    r.getScaledFrameAtTime(tUs, MediaMetadataRetriever.OPTION_CLOSEST, tw, th)
-                } else {
-                    r.getFrameAtTime(tUs, MediaMetadataRetriever.OPTION_CLOSEST)
-                }
-                if (bmp != null) {
-                    frames.add(planeOf(fit(bmp, 320)))
+                var bmp: Bitmap? = null
+                try {
+                    bmp = if (Build.VERSION.SDK_INT >= 27) {
+                        r.getScaledFrameAtTime(tUs, MediaMetadataRetriever.OPTION_CLOSEST, tw, th)
+                    } else {
+                        r.getFrameAtTime(tUs, MediaMetadataRetriever.OPTION_CLOSEST)
+                    }
+                } catch (e: Throwable) {
                     bmp = null
                 }
+                if (bmp != null) frames.add(planeOf(fit(bmp, 320)))
                 onProgress(i + 1, n)
             }
-            if (frames.isEmpty()) return null
+            if (frames.isEmpty()) {
+                lastError = "the phone could not decode any frame of this video"
+                return null
+            }
             return Clip(frames, 10)
         } catch (e: Throwable) {
+            lastError = describe(e)
             return null
         } finally {
             try {
                 r.release()
+            } catch (e: Throwable) {
+                // ignore
+            }
+            try {
+                f.delete()
             } catch (e: Throwable) {
                 // ignore
             }
@@ -423,7 +469,8 @@ object Engine {
     fun toLinesAll(clip: Clip, cfg: Cfg, aspect: Float): List<List<String>> {
         val cols = cfg.cols.coerceIn(40, 220)
         val ta = aspect.coerceIn(0.2f, 5f)
-        val rows = ((cols / ta) / CELL).roundToInt().coerceIn(8, 400)
+        val cell = cfg.cell.coerceIn(1.3f, 3f)
+        val rows = ((cols / ta) / cell).roundToInt().coerceIn(8, 400)
         val grids = ArrayList<FloatArray>(clip.frames.size)
         var lo = 0f
         var hi = 0f
@@ -441,6 +488,86 @@ object Engine {
         val out = ArrayList<List<String>>(grids.size)
         for (g in grids) out.add(finish(g, cols, rows, cfg, lo, hi))
         return out
+    }
+
+    // ------------------------------------------------------------------ auto setup
+
+    /** Picks gamma, contrast and edge strength from the picture's brightness: [gamma, contrast, edge]. */
+    fun suggest(p: Plane): FloatArray {
+        val hist = IntArray(256)
+        for (b in p.lum) hist[b.toInt() and 255]++
+        val n = max(1, p.lum.size)
+        var acc = 0
+        var med = 0
+        for (i in 0 until 256) {
+            acc += hist[i]
+            if (acc * 2 >= n) {
+                med = i
+                break
+            }
+        }
+        var darkCount = 0
+        for (i in 0 until 24) darkCount += hist[i]
+        val dark = darkCount.toFloat() / n
+        return if (dark > 0.55f) {
+            floatArrayOf(0.9f, 1.35f, 0.5f)
+        } else if (med > 120) {
+            floatArrayOf(1.8f, 1.3f, 0.6f)
+        } else {
+            floatArrayOf(1.3f, 1.3f, 0.55f)
+        }
+    }
+
+    /** Finds the lit part of the picture; returns [zoom, panX, panY] that frame it for a view of aspect ta. */
+    fun autoFrame(p: Plane, ta: Float): FloatArray {
+        val w = p.w
+        val h = p.h
+        val colCnt = IntArray(w)
+        val rowCnt = IntArray(h)
+        val lum = p.lum
+        for (y in 0 until h) {
+            val rb = y * w
+            for (x in 0 until w) {
+                if ((lum[rb + x].toInt() and 255) > 38) {
+                    colCnt[x]++
+                    rowCnt[y]++
+                }
+            }
+        }
+        val minCol = max(2, h / 200)
+        val minRow = max(2, w / 200)
+        var x0 = -1
+        var x1 = -1
+        for (x in 0 until w) {
+            if (colCnt[x] >= minCol) {
+                if (x0 < 0) x0 = x
+                x1 = x
+            }
+        }
+        var y0 = -1
+        var y1 = -1
+        for (y in 0 until h) {
+            if (rowCnt[y] >= minRow) {
+                if (y0 < 0) y0 = y
+                y1 = y
+            }
+        }
+        if (x0 < 0 || y0 < 0) return floatArrayOf(1f, 0.5f, 0.5f)
+        val bw = (x1 - x0 + 1) * 1.25f
+        val bh = (y1 - y0 + 1) * 1.25f
+        if (bw < w * 0.08f || bh < h * 0.08f) return floatArrayOf(1f, 0.5f, 0.5f)
+        val imgAspect = w.toFloat() / h
+        val wide = imgAspect > ta
+        val containW = if (wide) w.toFloat() else h * ta
+        val containH = if (wide) w / ta else h.toFloat()
+        val z = min(containW / bw, containH / bh).coerceIn(1f, 4f)
+        val rw = containW / z
+        val rh = containH / z
+        val cx = (x0 + x1) / 2f
+        val cy = (y0 + y1) / 2f
+        val px = if (kotlin.math.abs(w - rw) < 1f) 0.5f else ((cx - rw / 2f) / (w - rw)).coerceIn(0f, 1f)
+        val py = if (kotlin.math.abs(h - rh) < 1f) 0.5f else ((cy - rh / 2f) / (h - rh)).coerceIn(0f, 1f)
+        return floatArrayOf(z, px, py)
     }
 
     // ------------------------------------------------------------------- effects
@@ -485,16 +612,16 @@ object Engine {
 
     // ----------------------------------------------------------------- rendering
 
-    fun newPaint(): Paint {
+    fun newPaint(tf: Typeface? = null): Paint {
         val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG)
-        p.typeface = Typeface.MONOSPACE
+        p.typeface = tf ?: Typeface.MONOSPACE
         p.color = Color.WHITE
         return p
     }
 
-    fun heightFor(cols: Int, rows: Int, wPx: Int): Int {
+    fun heightFor(cols: Int, rows: Int, wPx: Int, cell: Float = CELL): Int {
         val cw = wPx.toFloat() / max(1, cols)
-        return max(1, (rows * cw * CELL).roundToInt())
+        return max(1, (rows * cw * cell).roundToInt())
     }
 
     /** Draws white glyphs on a transparent bitmap; tinting happens at draw time. */

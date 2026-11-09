@@ -301,10 +301,16 @@ private fun DrawScope.drawFull(pal: Pal, cfg: Cfg, live: Live, t: Int) {
     val img = live.image(0) ?: return
     val dw = max(1, size.width.toInt())
     val dh = max(1, size.height.toInt())
+    // manual size and shift (settings > FIT TO SCREEN)
+    val w = max(1, (dw * cfg.sx).toInt())
+    val h = max(1, (dh * cfg.sy).toInt())
+    val x = ((dw - w) / 2f + cfg.ox * dw).toInt()
+    val y = ((dh - h) / 2f + cfg.oy * dh).toInt()
     val flick = if (t == 0) 1f else 0.9f + 0.1f * sin(t * 0.3f)
     drawImage(
         image = img,
-        dstSize = IntSize(dw, dh),
+        dstOffset = IntOffset(x, y),
+        dstSize = IntSize(w, h),
         alpha = 0.9f * flick,
         colorFilter = ColorFilter.tint(pal.tint),
     )
@@ -314,13 +320,13 @@ private fun DrawScope.drawFull(pal: Pal, cfg: Cfg, live: Live, t: Int) {
             val sy = ((t * 131 + k * 977) % max(1, bh - 60)).coerceAtLeast(0)
             val sh = 18 + k * 10
             val dx = ((t * 17 + k * 53) % 48) - 24
-            val dy = (sy.toFloat() / bh * dh).toInt()
+            val dy = y + (sy.toFloat() / bh * h).toInt()
             drawImage(
                 image = img,
                 srcOffset = IntOffset(0, sy),
                 srcSize = IntSize(img.width, sh),
-                dstOffset = IntOffset(dx, dy),
-                dstSize = IntSize(dw, max(1, (sh.toFloat() / bh * dh).toInt())),
+                dstOffset = IntOffset(x + dx, dy),
+                dstSize = IntSize(w, max(1, (sh.toFloat() / bh * h).toInt())),
                 alpha = 0.85f,
                 colorFilter = ColorFilter.tint(pal.accent),
             )
@@ -330,16 +336,23 @@ private fun DrawScope.drawFull(pal: Pal, cfg: Cfg, live: Live, t: Int) {
 
 /** Smooth settings preview of the full-screen ASCII picture (drawn 1:1, never shrunk). */
 @Composable
-fun AsciiPreview(pal: Pal, live: Live, modifier: Modifier = Modifier) {
+fun AsciiPreview(cfg: Cfg, pal: Pal, live: Live, modifier: Modifier = Modifier) {
     Canvas(modifier) {
         drawRect(pal.bg)
         @Suppress("UNUSED_VARIABLE")
         val frameVersion = live.ver
         val img = live.image(4)
         if (img != null) {
+            val dw = max(1, size.width.toInt())
+            val dh = max(1, size.height.toInt())
+            val w = max(1, (dw * cfg.sx).toInt())
+            val h = max(1, (dh * cfg.sy).toInt())
+            val x = ((dw - w) / 2f + cfg.ox * dw).toInt()
+            val y = ((dh - h) / 2f + cfg.oy * dh).toInt()
             drawImage(
                 image = img,
-                dstSize = IntSize(max(1, size.width.toInt()), max(1, size.height.toInt())),
+                dstOffset = IntOffset(x, y),
+                dstSize = IntSize(w, h),
                 colorFilter = ColorFilter.tint(pal.tint),
             )
         }
@@ -383,7 +396,7 @@ fun UnderLayer(cfg: Cfg, pal: Pal) {
             Text(
                 AsciiArt.CODE,
                 style = TextStyle(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = MonoFamily,
                     fontSize = 8.sp,
                     lineHeight = 10.sp,
                     color = pal.tint.copy(alpha = 0.22f),

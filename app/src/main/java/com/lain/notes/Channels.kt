@@ -2,6 +2,7 @@ package com.lain.notes
 
 import android.graphics.Bitmap
 import android.graphics.Paint
+import android.graphics.Typeface
 import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -184,12 +185,24 @@ class Live {
     @Volatile
     var mix: Boolean = true
 
+    /** The bundled monospace font (the system one may be proportional). */
+    @Volatile
+    var typeface: Typeface? = null
+
+    /** Character cell height / width, adjustable in the settings. */
+    @Volatile
+    var cell: Float = Engine.CELL
+
     /** Bumped after every rendered frame so draw scopes know to repaint. */
     var ver: Int by mutableStateOf(0)
 
     private val chans: Array<Chan?> = arrayOfNulls<Chan>(5)
     private var seenVer = -1
     private var wasCasting = false
+    private var prevSeen = -1
+    private var prevSeenW = 0
+    private var prevSeenH = 0
+    private var wasPrevCasting = false
 
     fun image(k: Int): ImageBitmap? {
         if (k < 0 || k >= chans.size) return null
@@ -213,12 +226,12 @@ class Live {
         val cols = first[0].length
         val rows = first.size
         val w = picW
-        val h = if (picH > 0) picH else Engine.heightFor(cols, rows, w)
+        val h = if (picH > 0) picH else Engine.heightFor(cols, rows, w, cell)
         val existing = chans[0]
         if (existing == null || existing.wPx != w || existing.hPx != h) seenVer = -1
         val chan = chanFor(0, w, h)
         val now = SystemClock.uptimeMillis()
-        val casting = on && castFrom > 0L && (now - castFrom) < CAST_MS
+        val casting = castFrom > 0L && (now - castFrom) < CAST_MS
         val animated = on && frames.size > 1
         val changed = seenVer != picVer
         if (!(casting || animated || changed || wasCasting)) return false
@@ -233,16 +246,27 @@ class Live {
     }
 
     /** Draws the text straight at preview size, so the preview is smooth instead of a shrunk bitmap. */
-    private fun renderPrev(paint: Paint): Boolean {
+    private fun renderPrev(paint: Paint, t: Int): Boolean {
         val w = prevW
         val h = prevH
         if (w < 16 || h < 16) return false
         val frames = pic
         if (frames.isEmpty()) return false
         val now = SystemClock.uptimeMillis()
+        val casting = castFrom > 0L && (now - castFrom) < CAST_MS
+        val animated = on && frames.size > 1
+        val changed = prevSeen != picVer || prevSeenW != w || prevSeenH != h
+        if (!(casting || animated || changed || wasPrevCasting)) return false
+        if (animated && !casting && !changed && t % 2 != 0) return false
+        wasPrevCasting = casting
+        prevSeen = picVer
+        prevSeenW = w
+        prevSeenH = h
         var idx = 0
-        if (on && frames.size > 1) idx = ((now / (1000L / max(1, fps))) % frames.size).toInt()
-        chanFor(4, w, h).draw(frames[idx.coerceIn(0, frames.size - 1)], paint)
+        if (animated) idx = ((now / (1000L / max(1, fps))) % frames.size).toInt()
+        var lines = frames[idx.coerceIn(0, frames.size - 1)]
+        if (casting) lines = Engine.cast(lines, (now - castFrom).toFloat() / CAST_MS, 7, t)
+        chanFor(4, w, h).draw(lines, paint)
         return true
     }
 
@@ -254,7 +278,7 @@ class Live {
     }
 
     suspend fun run() {
-        val paint = Engine.newPaint()
+        val paint = Engine.newPaint(typeface)
         val rain = RainGen(64, 36)
         val fire = FireGen(64, 36)
         val plasma = PlasmaGen(64, 36)
@@ -264,7 +288,7 @@ class Live {
             var drew = false
             try {
                 if (renderPic(paint, t)) drew = true
-                if (renderPrev(paint)) drew = true
+                if (renderPrev(paint, t)) drew = true
                 if (mix) {
                     // when animation is off, each generator still draws one frame so the screens are not blank
                     if (on || chans[1] == null) {
@@ -286,7 +310,8 @@ class Live {
             if (drew) ver += 1
             t += 1
             val used = SystemClock.uptimeMillis() - t0
-            delay(if (on) max(20L, 100L - used) else 250L)
+            val lively = on || (castFrom > 0L && SystemClock.uptimeMillis() - castFrom < CAST_MS)
+            delay(if (lively) max(20L, 100L - used) else 250L)
         }
     }
 

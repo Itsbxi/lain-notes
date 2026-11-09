@@ -33,6 +33,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -130,7 +131,7 @@ fun App() {
     var canvasW by remember { mutableStateOf(0) }
     var canvasH by remember { mutableStateOf(0) }
 
-    val live = remember { Live() }
+    val live = remember { Live().also { it.typeface = Engine.loadMono(app) } }
     val noise = remember { Engine.noise(128).asImageBitmap() }
     val pal = PALS[cfg.theme.coerceIn(0, PALS.size - 1)]
 
@@ -146,6 +147,7 @@ fun App() {
     SideEffect {
         live.on = animNeeded
         live.mix = cfg.mix
+        live.cell = cfg.cell
     }
     LaunchedEffect(Unit) {
         withContext(Dispatchers.Default) { live.run() }
@@ -214,6 +216,33 @@ fun App() {
         cfgStore.save(n)
     }
 
+    // Best settings for this phone screen and this picture: letter count, framing, tone.
+    val autoCfg: (Cfg, Clip?) -> Cfg = { base, cl ->
+        val widthDp = usedW / density
+        var n = base.copy(
+            sx = 1f, sy = 1f, ox = 0f, oy = 0f, cell = Engine.CELL,
+            fit = true, brightness = 0f, dither = 0f, invert = false, ramp = 0,
+        )
+        n = n.copy(cols = if (base.mode == 1) (widthDp / 1.95f).roundToInt().coerceIn(120, 220) else 150)
+        if (cl != null && cl.frames.isNotEmpty()) {
+            val p = cl.frames[0]
+            val s = Engine.suggest(p)
+            val f = Engine.autoFrame(p, if (base.mode == 1) screenAspect else 1f)
+            n = n.copy(gamma = s[0], contrast = s[1], edge = s[2], zoom = f[0], panX = f[1], panY = f[2])
+        }
+        n
+    }
+
+    val autoFit: () -> Unit = {
+        setCfg(autoCfg(cfg, clip))
+        live.castFrom = SystemClock.uptimeMillis()
+    }
+
+    val resetAll: () -> Unit = {
+        setCfg(Cfg().withTheme(cfg.theme).copy(mode = cfg.mode, custom = cfg.custom))
+        live.castFrom = SystemClock.uptimeMillis()
+    }
+
     val loadMedia: (Uri) -> Unit = { uri ->
         scope.launch {
             busy = "READING..."
@@ -234,11 +263,12 @@ fun App() {
                 }
             }
             if (res != null) {
-                setCfg(cfg.copy(custom = true))
+                // a new picture gets the best settings for this screen automatically
+                setCfg(autoCfg(cfg, res).copy(custom = true))
                 srcVer += 1
                 busy = ""
             } else {
-                busy = "CAN'T READ THAT FILE"
+                busy = "CAN'T READ THAT FILE: " + Engine.lastError
             }
         }
     }
@@ -339,6 +369,8 @@ fun App() {
                         noise = noise,
                         tick = tick,
                         aspect = screenAspect,
+                        areaW = usedW,
+                        areaH = usedH,
                         busy = busy,
                         onCfg = setCfg,
                         onLoadImage = { pickImage.launch("image/*") },
@@ -348,6 +380,8 @@ fun App() {
                             srcVer += 1
                         },
                         onRecast = { live.castFrom = SystemClock.uptimeMillis() },
+                        onAutoFit = autoFit,
+                        onResetAll = resetAll,
                         onBack = { screen = 1 },
                     )
                 }

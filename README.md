@@ -1,4 +1,4 @@
-# LAIN://NOTES v2.0 (glyphcast edition)
+# LAIN://NOTES v2.3 (glyphcast edition)
 
 Notes app with a Serial Experiments Lain look: a wall of CRT TVs that show your
 picture, GIF or video as live ASCII art.
@@ -9,8 +9,8 @@ Push this folder's contents to a GitHub repo (the folder itself is the repo root
 from **Actions > Build APK > Run workflow**. Download `lain-notes-debug-apk` from the
 run's Artifacts; unzip it to get `app-debug.apk`.
 
-The APK is signed with Gradle's machine-local debug key. APKs built on different
-machines may not install as updates over one another.
+The APK is signed with `app/debug.keystore`, so every build has the same signature and
+installs over the previous one (your notes stay).
 
 ## Build (Android Studio)
 Open the folder, let Gradle sync, then Build > Build APK(s).
@@ -21,3 +21,9 @@ Open the folder, let Gradle sync, then Build > Build APK(s).
 - Themes: TV-BLUE, NAVI-TEAL, ID-RED, ZINE-BLUE, WIRED.
 - RECAST replays the glyph-cast reveal.
 - If the app ever crashes, the next launch shows the error text on screen.
+
+## Fit to screen
+- CFG > FIT TO SCREEN > AUTO FIT picks the letter count for your screen, frames the picture and tunes the tones.
+- WIDTH / HEIGHT / SHIFT / LINE SPACING sliders adjust the ASCII screen mode by hand.
+- RESET TO DEFAULT SETTINGS restores the tuned defaults.
+- The app bundles DejaVu Sans Mono (see assets/licenses) because some phones replace the system monospace font.

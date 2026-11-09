@@ -3,7 +3,7 @@ package com.lain.notes
 object AsciiArt {
 
     val LOGO: String = """
- _         _     ___  _   _
+ _         _     ___  _   _ 
 | |       / \   |_ _|| \ | |
 | |      / _ \   | | |  \| |
 | |___  / ___ \  | | | |\  |

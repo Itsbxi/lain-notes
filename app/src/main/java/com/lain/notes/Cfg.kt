@@ -39,6 +39,11 @@ data class Cfg(
     val panY: Float = 0.5f,
     val invert: Boolean = false,
     val fit: Boolean = true,
+    val cell: Float = 1.94f,
+    val sx: Float = 1f,
+    val sy: Float = 1f,
+    val ox: Float = 0f,
+    val oy: Float = 0f,
     val dim: Float = 0.45f,
     val scan: Boolean = true,
     val anim: Boolean = true,
@@ -50,7 +55,7 @@ data class Cfg(
 ) {
     // Everything that changes the ASCII conversion itself.
     fun asciiKey(): String =
-        "${mode == 1}|$cols|$ramp|$contrast|$brightness|$gamma|$edge|$dither|$zoom|$panX|$panY|$invert|$fit"
+        "${mode == 1}|$cols|$ramp|$contrast|$brightness|$gamma|$edge|$dither|$zoom|$panX|$panY|$invert|$fit|$cell"
 
     // Picking a theme also switches on its signature overlay.
     fun withTheme(i: Int): Cfg =
@@ -95,6 +100,11 @@ class CfgStore(ctx: Context) {
             panY = sp.getFloat("panY", d.panY).coerceIn(0f, 1f),
             invert = sp.getBoolean("invert", d.invert),
             fit = sp.getBoolean("fit", d.fit),
+            cell = sp.getFloat("cell", d.cell).coerceIn(1.3f, 3f),
+            sx = sp.getFloat("sx", d.sx).coerceIn(0.5f, 1.5f),
+            sy = sp.getFloat("sy", d.sy).coerceIn(0.5f, 1.5f),
+            ox = sp.getFloat("ox", d.ox).coerceIn(-0.5f, 0.5f),
+            oy = sp.getFloat("oy", d.oy).coerceIn(-0.5f, 0.5f),
             dim = sp.getFloat("dim", d.dim).coerceIn(0f, 0.92f),
             scan = sp.getBoolean("scan", d.scan),
             anim = sp.getBoolean("anim", d.anim),
@@ -124,6 +134,11 @@ class CfgStore(ctx: Context) {
             .putFloat("panY", c.panY)
             .putBoolean("invert", c.invert)
             .putBoolean("fit", c.fit)
+            .putFloat("cell", c.cell)
+            .putFloat("sx", c.sx)
+            .putFloat("sy", c.sy)
+            .putFloat("ox", c.ox)
+            .putFloat("oy", c.oy)
             .putFloat("dim", c.dim)
             .putBoolean("scan", c.scan)
             .putBoolean("anim", c.anim)

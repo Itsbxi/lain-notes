@@ -24,14 +24,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+/** DejaVu Sans Mono is bundled: some phones swap the system monospace font for a proportional one. */
+val MonoFamily: FontFamily = FontFamily(
+    Font(R.font.dejavu_sans_mono, FontWeight.Normal),
+    Font(R.font.dejavu_sans_mono_bold, FontWeight.Bold),
+)
+
 fun mono(size: Int, color: Color, bold: Boolean = false): TextStyle =
     TextStyle(
-        fontFamily = FontFamily.Monospace,
+        fontFamily = MonoFamily,
         fontSize = size.sp,
         color = color,
         fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,

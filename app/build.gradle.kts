@@ -11,8 +11,18 @@ android {
         applicationId = "com.lain.notes"
         minSdk = 24
         targetSdk = 34
-        versionCode = 4
-        versionName = "2.2"
+        versionCode = 5
+        versionName = "2.3"
+    }
+
+    // A fixed debug key: every build is signed the same way, so updates install over the old app.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildFeatures { compose = true }
